@@ -140,16 +140,16 @@ def get_from_to_dates(args, timestamp_file):
             logging.debug(f"Not able to open timestamp file '{timestamp_file}': {e}")
         # no date specified report from yesterday
         if not from_date:
-            from_date = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+            from_date = datetime.now(timezone.utc).replace(
                 hour=0, minute=0, second=0, microsecond=0
-            )
+            ) - timedelta(days=1)
     if args.to_date:
         to_date = dateutil.parser.parse(args.to_date)
     else:
-        # go until last minute of yesterday
-        to_date = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+        # go until the very beginning of today
+        to_date = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
-        ) + timedelta(days=1, microseconds=-1)
+        )
     return from_date, to_date
 
 
@@ -167,7 +167,7 @@ def generate_day_metrics(
     metrics = {}
     # pods ending in between the reporting times
     for pod in VM.select().where(
-        (VM.end_time >= period_start) & (VM.end_time <= period_end)
+        (VM.end_time >= period_start) & (VM.end_time < period_end)
     ):
         update_pod_metric(
             pod,
@@ -179,8 +179,8 @@ def generate_day_metrics(
 
     # pods starting but not finished between the reporting times
     for pod in VM.select().where(
-        (VM.start_time <= period_end)
-        & (VM.end_time.is_null() | (VM.end_time > period_end))
+        (VM.start_time < period_end)
+        & (VM.end_time.is_null() | (VM.end_time >= period_end))
     ):
         update_pod_metric(
             pod,
@@ -269,8 +269,8 @@ def main():
     logging.debug(f"Reporting from {from_date} to {to_date}")
     # repeat in 24 hour intervals
     period_start = from_date
-    while period_start <= to_date:
-        period_end = period_start + timedelta(days=1, microseconds=-1)
+    while period_start < to_date:
+        period_end = period_start + timedelta(days=1)
         generate_day_metrics(
             period_start,
             period_end,
@@ -281,7 +281,7 @@ def main():
             installation,
             args.dry_run,
         )
-        period_start = period_end + timedelta(microseconds=1)
+        period_start = period_end
 
 
 if __name__ == "__main__":
